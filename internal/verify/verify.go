@@ -13,18 +13,18 @@ import (
 )
 
 type FileReport struct {
-	Path           string
-	OKLines        int
-	BadLines       int
-	UserTurns      int
-	AssistantTurns int
-	FirstError     string
+	Path           string `json:"path"`
+	OKLines        int    `json:"ok_lines"`
+	BadLines       int    `json:"bad_lines"`
+	UserTurns      int    `json:"user_turns"`
+	AssistantTurns int    `json:"assistant_turns"`
+	FirstError     string `json:"first_error,omitempty"`
 }
 
 type Report struct {
-	Files       []FileReport
-	TotalOK     int
-	TotalBad    int
+	Files    []FileReport `json:"files"`
+	TotalOK  int          `json:"total_ok"`
+	TotalBad int          `json:"total_bad"`
 }
 
 // Walk scans root for .jsonl files and verifies each one. Returns the
