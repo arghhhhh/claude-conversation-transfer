@@ -85,15 +85,20 @@ func Apply(data []byte, srcCWD string, srcOS encode.OS, tgtCWD string, tgtOS enc
 		// POSIX -> Windows: forward slashes in tail -> JSON-escaped backslash.
 		fromSep, toSep = []byte(`/`), []byte(`\\`)
 	}
-	out2, n := convertTails(out, tgt, fromSep, toSep)
+	out2, n := convertTails(out, tgt, fromSep, toSep, false)
 	if n > 0 {
 		changed = true
 	}
 	// For Windows -> POSIX we also handle raw single backslashes in the tail
 	// (defensive; the file shouldn't have them inside JSON strings, but we
-	// don't want one to break a path).
+	// don't want one to break a path). This pass is escape-aware: a single
+	// backslash that introduces a JSON escape sequence (\", \\, \n, \uXXXX,
+	// ...) is NOT a path separator — it's the syntax of the JSON string
+	// itself — so we must leave it intact. Rewriting it corrupts the record
+	// (e.g. a quoted path token like ".../dir\" becomes ".../dir/" and the
+	// now-unescaped quote terminates the string early).
 	if srcOS == encode.Windows && tgtOS == encode.POSIX {
-		out3, n2 := convertTails(out2, tgt, []byte(`\`), []byte(`/`))
+		out3, n2 := convertTails(out2, tgt, []byte(`\`), []byte(`/`), true)
 		return out3, changed || n2 > 0, n + n2
 	}
 	return out2, changed, n
@@ -101,7 +106,15 @@ func Apply(data []byte, srcCWD string, srcOS encode.OS, tgtCWD string, tgtOS enc
 
 // convertTails walks every occurrence of `prefix`, then translates fromSep
 // to toSep until the path token ends.
-func convertTails(data, prefix, fromSep, toSep []byte) ([]byte, int) {
+//
+// When skipJSONEscapes is true, a backslash that introduces a JSON escape
+// sequence (\", \\, \/, \b, \f, \n, \r, \t, \uXXXX) is copied through verbatim
+// along with the character it escapes, and is never treated as a separator.
+// This is required for the single-backslash Windows->POSIX pass: in valid
+// JSONL a real path separator is always doubled (\\) and handled earlier, so
+// any lone backslash that remains belongs to the JSON string syntax, not the
+// path.
+func convertTails(data, prefix, fromSep, toSep []byte, skipJSONEscapes bool) ([]byte, int) {
 	if len(prefix) == 0 {
 		return data, 0
 	}
@@ -121,6 +134,13 @@ func convertTails(data, prefix, fromSep, toSep []byte) ([]byte, int) {
 			if isPathTokenEnd(data[i]) {
 				break
 			}
+			if skipJSONEscapes && data[i] == '\\' && i+1 < len(data) && isJSONEscapeChar(data[i+1]) {
+				// Preserve the JSON escape sequence intact (both bytes).
+				out.WriteByte(data[i])
+				out.WriteByte(data[i+1])
+				i += 2
+				continue
+			}
 			if i+len(fromSep) <= len(data) && bytes.Equal(data[i:i+len(fromSep)], fromSep) {
 				out.Write(toSep)
 				i += len(fromSep)
@@ -132,6 +152,17 @@ func convertTails(data, prefix, fromSep, toSep []byte) ([]byte, int) {
 		}
 	}
 	return out.Bytes(), conversions
+}
+
+// isJSONEscapeChar reports whether b is a character that, when preceded by a
+// backslash inside a JSON string, forms a valid escape sequence. A backslash
+// followed by one of these is JSON syntax, not a path separator.
+func isJSONEscapeChar(b byte) bool {
+	switch b {
+	case '"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u':
+		return true
+	}
+	return false
 }
 
 // isPathTokenEnd returns true for bytes that cannot appear mid-path inside a

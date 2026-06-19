@@ -102,6 +102,41 @@ func TestSameOSDifferentPath(t *testing.T) {
 	}
 }
 
+// TestRegressionEscapedQuoteAfterPath guards the escape-corruption bug: a
+// command line that embeds a path written with forward slashes and ends in an
+// escaped quote (e.g. a quoted shell argument `cd ".../dir"`) must survive the
+// Windows->POSIX rewrite. The historic single-backslash tail pass rewrote the
+// `\` of the `\"` escape into `/`, un-escaping the quote and corrupting the
+// record. The path here uses '/' (as the user typed it on Windows), so only
+// the prefix swap should change anything and the JSON must still parse.
+func TestRegressionEscapedQuoteAfterPath(t *testing.T) {
+	src := `C:\Users\joss\Desktop\Projects\Mine\claude-project-transfer`
+	tgt := `/Users/joss/Desktop/Projects/Mine/claude-conversations-transfer`
+	// As stored in JSONL: a tool command string containing a forward-slash
+	// path that the source already swapped to the target, ending in \" (an
+	// escaped quote that closes the shell argument).
+	line := `{"type":"assistant","command":"cd \"` + escForJSON(tgt) + `/_mermaid_test\" && echo \"done\""}`
+	// Sanity: the constructed input must itself be valid JSON.
+	var probe any
+	if err := json.Unmarshal([]byte(line), &probe); err != nil {
+		t.Fatalf("test input is not valid JSON: %v\n%s", err, line)
+	}
+	out, _, _ := Apply([]byte(line), src, encode.Windows, tgt, encode.POSIX)
+	var v any
+	if err := json.Unmarshal(out, &v); err != nil {
+		t.Fatalf("invalid JSON after rewrite (escape corrupted): %v\nout: %s", err, out)
+	}
+	if !strings.Contains(string(out), `_mermaid_test\"`) {
+		t.Fatalf("escaped quote after path was mangled: %s", out)
+	}
+}
+
+// escForJSON doubles backslashes so a literal path can be embedded inside a Go
+// string that is itself a JSON document under test.
+func escForJSON(s string) string {
+	return strings.ReplaceAll(s, `\`, `\\`)
+}
+
 // TestRegressionValidJSONAfterRewrite is the explicit guard for the
 // backslash-transport bug: after rewriting, every JSON record must parse.
 func TestRegressionValidJSONAfterRewrite(t *testing.T) {
