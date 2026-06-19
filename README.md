@@ -65,6 +65,11 @@ claude-conversation-transfer import foo.zip --json
   other projects). Those would not resolve on the target machine either way,
   and broad rewrites would corrupt message text, code blocks, and URLs.
 
+## Environment
+
+`CLAUDE_CONFIG_DIR` is honored: when set, the projects directory is
+`$CLAUDE_CONFIG_DIR/projects/` instead of the default `~/.claude/projects/`.
+
 ## Verification is part of the contract
 
 After import, every `.jsonl` line is re-parsed as JSON. If any line fails,

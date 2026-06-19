@@ -21,15 +21,12 @@ func RunExport(opts ExportOpts) (ExportReport, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	if opts.Home == "" {
-		h, err := os.UserHomeDir()
-		if err != nil {
-			return ExportReport{}, err
-		}
-		opts.Home = h
+	projects, err := ProjectsDir(opts.Home)
+	if err != nil {
+		return ExportReport{}, err
 	}
 	enc := encode.Encode(opts.CWD)
-	src := filepath.Join(opts.Home, ".claude", "projects", enc)
+	src := filepath.Join(projects, enc)
 	if _, err := os.Stat(src); err != nil {
 		return ExportReport{}, fmt.Errorf("no project folder for cwd %s (looked for %s): %w", opts.CWD, src, err)
 	}

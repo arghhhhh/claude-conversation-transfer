@@ -27,12 +27,9 @@ func RunImport(opts ImportOpts) (ImportReport, error) {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	if opts.Home == "" {
-		h, err := os.UserHomeDir()
-		if err != nil {
-			return ImportReport{}, err
-		}
-		opts.Home = h
+	projects, err := ProjectsDir(opts.Home)
+	if err != nil {
+		return ImportReport{}, err
 	}
 	if opts.HostOS == encode.Unknown {
 		if runtime.GOOS == "windows" {
@@ -65,7 +62,7 @@ func RunImport(opts ImportOpts) (ImportReport, error) {
 
 	// 2. Compute target folder.
 	tgtEnc := encode.Encode(opts.TargetCWD)
-	target := filepath.Join(opts.Home, ".claude", "projects", tgtEnc)
+	target := filepath.Join(projects, tgtEnc)
 
 	// 3. Backup any existing folder.
 	backup := ""
